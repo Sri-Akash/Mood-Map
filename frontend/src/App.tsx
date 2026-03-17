@@ -8,29 +8,62 @@ const MOODS = [
   { emoji: '😠', label: 'Upset', value: 1, color: 'bg-mood-angry' },
 ]
 
+const API_URL = 'http://localhost:8000'
+
 function App() {
   const [selectedMood, setSelectedMood] = useState<number | null>(null)
   const [note, setNote] = useState('')
   const [isRecording, setIsRecording] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
   const [checkIns, setCheckIns] = useState<Array<{
-    id: number
+    id: string
     mood: number
     note: string
     timestamp: Date
+    ai_analysis?: string
   }>>([])
+  const [error, setError] = useState<string | null>(null)
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (selectedMood === null) return
     
-    setCheckIns([...checkIns, {
-      id: Date.now(),
-      mood: selectedMood,
-      note,
-      timestamp: new Date()
-    }])
+    setIsLoading(true)
+    setError(null)
     
-    setSelectedMood(null)
-    setNote('')
+    try {
+      const response = await fetch(`${API_URL}/api/checkins`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          mood: selectedMood,
+          note: note || null,
+        }),
+      })
+      
+      if (!response.ok) {
+        throw new Error('Failed to submit check-in')
+      }
+      
+      const data = await response.json()
+      
+      setCheckIns([...checkIns, {
+        id: data.id,
+        mood: data.mood,
+        note: data.note || '',
+        timestamp: new Date(data.timestamp),
+        ai_analysis: data.ai_analysis,
+      }])
+      
+      setSelectedMood(null)
+      setNote('')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred')
+      console.error('Error submitting check-in:', err)
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   return (
@@ -99,16 +132,23 @@ function App() {
           {/* Submit Button */}
           <button
             onClick={handleSubmit}
-            disabled={selectedMood === null}
+            disabled={selectedMood === null || isLoading}
             className={`w-full py-3 rounded-lg font-semibold transition-colors ${
-              selectedMood !== null
+              selectedMood !== null && !isLoading
                 ? 'bg-purple-600 text-white hover:bg-purple-700'
                 : 'bg-gray-300 text-gray-500 cursor-not-allowed'
             }`}
           >
-            Log Check-in
+            {isLoading ? 'Submitting...' : 'Log Check-in'}
           </button>
         </div>
+
+        {/* Error Message */}
+        {error && (
+          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-8">
+            {error}
+          </div>
+        )}
 
         {/* Recent Check-ins */}
         {checkIns.length > 0 && (
@@ -136,6 +176,11 @@ function App() {
                   {checkIn.note && (
                     <p className="text-sm text-gray-600 italic">
                       "{checkIn.note}"
+                    </p>
+                  )}
+                  {checkIn.ai_analysis && (
+                    <p className="text-xs text-purple-600 mt-1">
+                      💡 {checkIn.ai_analysis}
                     </p>
                   )}
                 </div>
